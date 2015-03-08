@@ -5,7 +5,7 @@
 extern crate time;
 
 use std::cell::UnsafeCell;
-use std::sync::{
+pub use std::sync::{
     TryLockError,
     LockResult,
     TryLockResult,
