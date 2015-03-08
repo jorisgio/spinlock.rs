@@ -183,7 +183,8 @@ impl<T : Send + Sync> SpinLock<T> {
             return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
         } else {
             let count = self.count.load(Ordering::Acquire);
-            if self.count.compare_and_swap(count, count + 1, Ordering::AcqRel) == count { 
+            if count & SHARED == SHARED && 
+                self.count.compare_and_swap(count, count + 1, Ordering::AcqRel) == count { 
                 return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
             }
             return Err(TryLockError::WouldBlock)
