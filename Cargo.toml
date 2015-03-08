@@ -1,0 +1,8 @@
+[package]
+
+name = "spinlock"
+version = "0.0.1"
+authors = ["Joris Giovannangeli <joris@giovannangeli.fr>"]
+
+[dependencies]
+time = "*"
