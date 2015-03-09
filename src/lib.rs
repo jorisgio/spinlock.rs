@@ -202,18 +202,13 @@ impl<T : Send + Sync> SpinLock<T> {
         }
     }
 
-    #[inline]
-    pub fn is_poisonned(&self) -> bool {
-        self.poison.get()
-    }
-
 }
 
 impl<T> SpinLock<T> {
 
     #[inline]
     fn read_unlock(&self) {
-        self.count.fetch_sub(1, Ordering::Release);
+        self.count.fetch_sub(1, Ordering::Relaxed);
 
         while self.count.load(Ordering::Relaxed) == SHARED {
             if self.count.compare_and_swap(SHARED, 0, Ordering::Relaxed) == SHARED {
@@ -224,6 +219,11 @@ impl<T> SpinLock<T> {
 
     fn write_unlock(&self) {
         self.count.fetch_sub(1, Ordering::Release);
+    }
+
+    #[inline]
+    pub fn is_poisonned(&self) -> bool {
+        self.poison.get()
     }
 }
 
