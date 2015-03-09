@@ -595,7 +595,7 @@
 <span class='comment'>// The counter is a number of SHARED readers instead of EXCLUSIVE writers</span>
 <span class='kw'>const</span> <span class='ident'>SHARED</span> : <span class='ident'>usize</span> <span class='op'>=</span> <span class='ident'>std</span>::<span class='ident'>isize</span>::<span class='ident'>MIN</span> <span class='kw'>as</span> <span class='ident'>usize</span>;
 <span class='comment'>// A thread is trying to acquire an exclusive lock</span>
-<span class='kw'>const</span> <span class='ident'>EXCLWAIT</span> : <span class='ident'>usize</span> <span class='op'>=</span> <span class='ident'>SHARED</span> <span class='op'>&gt;&gt;</span> <span class='number'>4</span>;
+<span class='kw'>const</span> <span class='ident'>EXCLWAIT</span> : <span class='ident'>usize</span> <span class='op'>=</span> <span class='ident'>SHARED</span> <span class='op'>&gt;&gt;</span> <span class='number'>11</span>;
 <span class='doccomment'>/// Maximum time spent in spinning in constested path in nanoseconds</span>
 <span class='kw'>pub</span> <span class='kw'>const</span> <span class='ident'>MAX_WAIT</span> : <span class='ident'>u64</span> <span class='op'>=</span> <span class='number'>2_000_000_000</span>;
 <span class='doccomment'>/// Number of spin retry in contested path </span>
