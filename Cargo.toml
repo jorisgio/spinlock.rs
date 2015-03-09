@@ -5,6 +5,7 @@ version = "0.0.1"
 authors = ["Joris Giovannangeli <joris@giovannangeli.fr>"]
 license = "MIT"
 repository = "https://github.com/jorisgio/spinlock.rs"
+documentation = "http://jorisgio.github.io/spinlock.rs/spinlock/"
 description = """
 Lock primitive based on spinning protecting shared data for concurrent access
 """
