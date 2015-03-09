@@ -114,7 +114,7 @@ fn map_result<T, U, F>(result: LockResult<T>, f: F)
 // The counter is a number of SHARED readers instead of EXCLUSIVE writers
 const SHARED : usize = std::isize::MIN as usize;
 // A thread is trying to acquire an exclusive lock
-const EXCLWAIT : usize = SHARED >> 4;
+const EXCLWAIT : usize = SHARED >> 11;
 /// Maximum time spent in spinning in constested path in nanoseconds
 pub const MAX_WAIT : u64 = 2_000_000_000;
 /// Number of spin retry in contested path 
