@@ -2,6 +2,7 @@
 #![feature(unsafe_destructor)]
 #![feature(core)]
 #![feature(std_misc)]
+#![feature(test)]
 extern crate time;
 
 use std::cell::UnsafeCell;
@@ -102,7 +103,7 @@ impl<T : Send + Sync> SpinLock<T> {
 
     #[inline]
     pub fn write(&self) -> LockResult<SpinLockWriteGuard<T>> {
-        if self.count.fetch_add(1, Ordering::AcqRel) != 0 {
+        if self.count.fetch_add(1, Ordering::Acquire) != 0 {
             return self.write_contested()
         }
         SpinLockWriteGuard::new(self, &self.data)
@@ -113,12 +114,13 @@ impl<T : Send + Sync> SpinLock<T> {
         let mut time : u64;
         let mut i = 0u32;
 
-        self.count.fetch_add(EXCLWAIT - 1, Ordering::AcqRel);
-        self.count.fetch_and(! SHARED, Ordering::AcqRel);
+        self.count.fetch_add(EXCLWAIT - 1, Ordering::Relaxed);
+        self.count.fetch_and(! SHARED, Ordering::Relaxed);
         loop {
-            let count = self.count.load(Ordering::Acquire);
+            // Use relaxed ordering to avoid trashing the cache coherency handling for free 
+            let count = self.count.load(Ordering::Relaxed);
             if count & (EXCLWAIT - 1) == 0 && 
-                self.count.compare_and_swap(count, (count & !EXCLWAIT) | 1, Ordering::AcqRel) == count { 
+                self.count.compare_and_swap(count, count - EXCLWAIT + 1, Ordering::Acquire) == count { 
                     break;
                 }
 
@@ -127,8 +129,9 @@ impl<T : Send + Sync> SpinLock<T> {
                 if base_time == 0 {
                     base_time = time;
                 } else if time - base_time > MAXWAIT {
-                    // FIXME : not 100% sure about what happens if there are multiple EXCL requests pending
-                    self.count.fetch_and(! EXCLWAIT, Ordering::AcqRel);
+                    // XXX we converted the SHARED locks to exclusive ones, i'm not sure how bad
+                    // actually is
+                    self.count.fetch_sub(EXCLWAIT, Ordering::Relaxed);
                     panic!("Spinning on a spin lock for too long")
                 }
                 thread::yield_now();
@@ -141,7 +144,7 @@ impl<T : Send + Sync> SpinLock<T> {
 
     #[inline]
     pub fn read(&self) -> LockResult<SpinLockReadGuard<T>> {
-        if self.count.compare_and_swap(0, SHARED | 1, Ordering::AcqRel) == 0 {
+        if self.count.compare_and_swap(0, SHARED | 1, Ordering::Acquire) != 0 {
             return self.read_contested()
         }
         SpinLockReadGuard::new(self, &self.data)
@@ -152,13 +155,13 @@ impl<T : Send + Sync> SpinLock<T> {
         let mut base_time : u64 = 0;
         let mut time : u64;
         loop {
-            let count = self.count.load(Ordering::Acquire);
+            let count = self.count.load(Ordering::Relaxed);
             if count == 0 {
-                if self.count.compare_and_swap(0, SHARED | 1, Ordering::AcqRel) == 0 {
+                if self.count.compare_and_swap(0, SHARED | 1, Ordering::Acquire) == 0 {
                     break
                 }
             } else if count & SHARED == SHARED {
-                if self.count.compare_and_swap(count, count + 1, Ordering::AcqRel) == count {
+                if self.count.compare_and_swap(count, count + 1, Ordering::Acquire) == count {
                     break
                 }
             }
@@ -179,12 +182,12 @@ impl<T : Send + Sync> SpinLock<T> {
 
     #[inline]
     pub fn try_read(&self) -> TryLockResult<SpinLockReadGuard<T>> {
-        if self.count.compare_and_swap(0, 1 | SHARED, Ordering::AcqRel) == 0 {
+        if self.count.compare_and_swap(0, 1 | SHARED, Ordering::Acquire) == 0 {
             return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
         } else {
-            let count = self.count.load(Ordering::Acquire);
+            let count = self.count.load(Ordering::Relaxed);
             if count & SHARED == SHARED && 
-                self.count.compare_and_swap(count, count + 1, Ordering::AcqRel) == count { 
+                self.count.compare_and_swap(count, count + 1, Ordering::Acquire) == count { 
                 return Ok(try!(SpinLockReadGuard::new(self, &self.data)))
             }
             return Err(TryLockError::WouldBlock)
@@ -192,7 +195,7 @@ impl<T : Send + Sync> SpinLock<T> {
     }
 
     pub fn try_write(&self) -> TryLockResult<SpinLockWriteGuard<T>> {
-        if self.count.compare_and_swap(0, 1, Ordering::AcqRel) == 0 {
+        if self.count.compare_and_swap(0, 1, Ordering::Acquire) == 0 {
             Ok(try!(SpinLockWriteGuard::new(self, &self.data)))
         } else {
             Err(TryLockError::WouldBlock)
@@ -210,17 +213,17 @@ impl<T> SpinLock<T> {
 
     #[inline]
     fn read_unlock(&self) {
-        self.count.fetch_sub(1, Ordering::AcqRel);
+        self.count.fetch_sub(1, Ordering::Release);
 
-        while self.count.load(Ordering::Acquire) == SHARED {
-            if self.count.compare_and_swap(SHARED, 0, Ordering::AcqRel) == SHARED {
+        while self.count.load(Ordering::Relaxed) == SHARED {
+            if self.count.compare_and_swap(SHARED, 0, Ordering::Relaxed) == SHARED {
                 break
             }
         }
     }
 
     fn write_unlock(&self) {
-        self.count.fetch_sub(1, Ordering::AcqRel);
+        self.count.fetch_sub(1, Ordering::Release);
     }
 }
 
