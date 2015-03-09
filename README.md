@@ -26,18 +26,17 @@ fn main() {
 
 	// Write access
 	{
-		let data = spin.write().unwrap();
+		let mut data = spin.write().unwrap();
 		*data += 1;
 	}
 	// Read access
 	{
 		let data = spin.read().unwrap();
-		println!("{}", data);
+		println!("{}", *data);
 	}
 }
 ```
 
-Please not that the spinlock doesn't deal itself with reference counting. You
+Please note that the spinlock doesn't deal itself with reference counting. You
 might want to use `Arc<SpinLock<T>>` to share the lock between threads.
-
 
