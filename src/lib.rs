@@ -209,12 +209,8 @@ impl<T> SpinLock<T> {
     #[inline]
     fn read_unlock(&self) {
         self.count.fetch_sub(1, Ordering::Relaxed);
-
-        while self.count.load(Ordering::Relaxed) == SHARED {
-            if self.count.compare_and_swap(SHARED, 0, Ordering::Relaxed) == SHARED {
-                break
-            }
-        }
+        // Clear SHARED flag if SHARED count is 0
+        self.count.compare_and_swap(SHARED, 0, Ordering::Relaxed);
     }
 
     fn write_unlock(&self) {
