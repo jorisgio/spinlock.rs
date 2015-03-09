@@ -1,3 +1,36 @@
+//! A reader/writer spin lock implementation.
+//! A spin lock is a particular kind of lock which will not put the thread to sleep when it tries
+//! to acquire a lock already hold by another thread or codepath. Instead, the thread will *spin*
+//! on the lock, which means it will loop trying to acquire it again and again.
+//!
+//! # Timeouts 
+//!
+//! This implementation has a timeout. Spinlock are fast but should only be used to protect short
+//! critical sections and a lock holder should only hold the lock for a very short period of time
+//! to avoid wasting CPU cycles. If a thread tries to acquire a lock for more than `MAX_WAIT`
+//! nanoseconds, it will panic.
+//!
+//! # Optimistic
+//!
+//! The implementation is Optimistic. The acquire codepath assumes that the lock operation will
+//! succeed and doesn't try to minimize the cost of the initial acquire operation. If the access
+//! is contested, the implementation then tries to minimize the pressure on the CPU cache until it
+//! it can actually acquire the lock.
+//! After `SPIN_COUNT` retries, the acquire path will call `thread::yield_now()` between each retry
+//! to allow for other threads to run and drop the lock.
+//!
+//! # Favor exclusive access
+//!
+//! If a thread is spinning in an contested exclusive access attempt, no new shared access will be
+//! granted. This is designed to avoid Reader DOSing the Writers.
+//!
+//! # Poisonning
+//!
+//! If an exclusive holder panics while holding the lock, it might void the coherency rules.
+//! Indeed, the protected data might be in a state in which it is not supposed to be. To prevent
+//! this, if an exclusive holder panics, the lock is poisonned and no other access to the lock will
+//! be granted.
+
 #![feature(optin_builtin_traits)]
 #![feature(unsafe_destructor)]
 #![feature(core)]
@@ -16,6 +49,7 @@ use std::thread;
 use std::ops::{Deref, DerefMut};
 
 use std::sync::atomic::{Ordering, AtomicUsize};
+
 
 // Panic guards, taken from std::sync 
 
@@ -76,12 +110,26 @@ fn map_result<T, U, F>(result: LockResult<T>, f: F)
 }
 
 // SpinLock implementation
-//
-const SHARED : usize = 0x80000000;
-const EXCLWAIT : usize = 0x00100000;
-const MAXWAIT : u64 = 2_000_000_000;
-const SPIN_COUNT : u32 = 0xFF;
+
+// The counter is a number of SHARED readers instead of EXCLUSIVE writers
+const SHARED : usize = std::isize::MIN as usize;
+// A thread is trying to acquire an exclusive lock
+const EXCLWAIT : usize = SHARED >> 4;
+/// Maximum time spent in spinning in constested path in nanoseconds
+pub const MAX_WAIT : u64 = 2_000_000_000;
+/// Number of spin retry in contested path 
+pub const SPIN_COUNT : u32 = 0xFF;
     
+/// A Reader/Writer spinlock
+///
+/// A lock protects the underlying data of type `T` for shared memory concurent access.
+/// The lock semantic allows any number of concurent readers or alternatively at most one writer.
+/// A reader is given a reference to the protected data and is able to read it with the guarantee 
+/// that the data will not change while it holds this reference.
+/// A writer is given a mutable reference to the protected data and is able to read and write it
+/// with the guarantee that the data will not change while it holds this reference.
+///
+/// The protected data must implement the markers `Send` and the marker `Sync`.
 pub struct SpinLock<T> {
     count : AtomicUsize,
     data : UnsafeCell<T>,
@@ -93,6 +141,8 @@ unsafe impl<T: Send + Sync> Sync for SpinLock<T> {}
 
 
 impl<T : Send + Sync> SpinLock<T> {
+    /// Create a new `SpinLock` wrapping the supplied data
+    #[inline]
     pub fn new(data : T) -> SpinLock<T> {
         SpinLock {
             count : AtomicUsize::new(0),
@@ -101,6 +151,27 @@ impl<T : Send + Sync> SpinLock<T> {
         }
     }
 
+    /// Lock the `SpinLock` for exclusive access and returns a RAII guard which will drop the lock
+    /// when it is dropped.
+    ///
+    /// If another holder as paniced while holding a write lock on the same spinlock, the lock will
+    /// be poisonned. In this case, `write` will fail with a `PoisonError`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the thread is waiting more than `MAX_WAIT` nanoseconds
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let spin = SpinLock::new(42);
+    /// {
+    ///     let data = spin.write().unwrap();
+    ///     *data += 1;
+    /// }
+    /// let data = spin.read().unwrap();
+    /// assert_eq!(*data, 43);
+    /// ```
     #[inline]
     pub fn write(&self) -> LockResult<SpinLockWriteGuard<T>> {
         if self.count.fetch_add(1, Ordering::Acquire) != 0 {
@@ -109,12 +180,15 @@ impl<T : Send + Sync> SpinLock<T> {
         SpinLockWriteGuard::new(self, &self.data)
     }
 
-    pub fn write_contested(&self) -> LockResult<SpinLockWriteGuard<T>> {
+    // Contested acquire path. Spin on the lock until acquiring or timeout
+    fn write_contested(&self) -> LockResult<SpinLockWriteGuard<T>> {
         let mut base_time : u64 = 0;
         let mut time : u64;
         let mut i = 0u32;
 
+        // Notify that we want exclusive access
         self.count.fetch_add(EXCLWAIT - 1, Ordering::Relaxed);
+        // Clear SHARED flag
         self.count.fetch_and(! SHARED, Ordering::Relaxed);
         loop {
             // Use relaxed ordering to avoid trashing the cache coherency handling for free 
@@ -128,7 +202,7 @@ impl<T : Send + Sync> SpinLock<T> {
                 time = time::precise_time_ns();
                 if base_time == 0 {
                     base_time = time;
-                } else if time - base_time > MAXWAIT {
+                } else if time - base_time > MAX_WAIT {
                     // XXX we converted the SHARED locks to exclusive ones, i'm not sure how bad
                     // actually is
                     self.count.fetch_sub(EXCLWAIT, Ordering::Relaxed);
@@ -142,6 +216,23 @@ impl<T : Send + Sync> SpinLock<T> {
         SpinLockWriteGuard::new(self, &self.data)
     }
 
+    /// Lock the `SpinLock` for shared access and returns a RAII guard which will drop the lock
+    /// when it is dropped.
+    ///
+    /// If another holder as paniced while holding a write lock on the same spinlock, the lock will
+    /// be poisonned. In this case, `write` will fail with a `PoisonError`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the thread is waiting more than `MAX_WAIT` nanoseconds
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let spin = SpinLock::new(42);
+    /// let data = spin.read().unwrap();
+    /// assert_eq!(*data, 42);
+    /// ```
     #[inline]
     pub fn read(&self) -> LockResult<SpinLockReadGuard<T>> {
         if self.count.compare_and_swap(0, SHARED | 1, Ordering::Acquire) != 0 {
@@ -150,7 +241,8 @@ impl<T : Send + Sync> SpinLock<T> {
         SpinLockReadGuard::new(self, &self.data)
     }
 
-    pub fn read_contested(&self) -> LockResult<SpinLockReadGuard<T>> {
+    // Contested acquire path. Spin on the lock until acquiring or timeout
+    fn read_contested(&self) -> LockResult<SpinLockReadGuard<T>> {
         let mut i = 0u32;
         let mut base_time : u64 = 0;
         let mut time : u64;
@@ -169,7 +261,7 @@ impl<T : Send + Sync> SpinLock<T> {
                 time = time::precise_time_ns();
                 if base_time == 0 {
                     base_time = time;
-                } else if time - base_time > MAXWAIT {
+                } else if time - base_time > MAX_WAIT {
                     panic!("Spinning on a spin lock for too long")
                 }
                 thread::yield_now();
@@ -180,6 +272,26 @@ impl<T : Send + Sync> SpinLock<T> {
         SpinLockReadGuard::new(self, &self.data)
     }
 
+    /// Attempt to acquire the lock with shared access.
+    ///
+    /// This function will never spin, and will return immediatly if the access is contested. 
+    /// Returns a RAII guard if the access is successful, or `TryLockError::WouldBlock` if the
+    /// access could not be granted.
+    ///
+    /// If an exclusive holder has panic while holding the lock, the lock will be poisonned and
+    /// `Poisonned(PoisonError)` will be returned.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let spin = SpinLock::new(42);
+    ///
+    /// match spin.try_read() {
+    ///     Ok(data) => assert_eq!(*data, 42),
+    ///     Err(TryLockError::WouldBlock) => (), // Sorry luke it's not your turn
+    ///     Err(Poisonned(_)) => panic!("Lock is poisonned"),
+    /// }
+    /// ```
     #[inline]
     pub fn try_read(&self) -> TryLockResult<SpinLockReadGuard<T>> {
         if self.count.compare_and_swap(0, 1 | SHARED, Ordering::Acquire) == 0 {
@@ -194,6 +306,30 @@ impl<T : Send + Sync> SpinLock<T> {
         }
     }
 
+    /// Attempt to acquire the lock with exclusive access.
+    ///
+    /// This function will never spin, and will return immediatly if the access is contested. 
+    /// Returns a RAII guard if the access is successful, or `TryLockError::WouldBlock` if the
+    /// access could not be granted.
+    ///
+    /// If an exclusive holder has panic while holding the lock, the lock will be poisonned and
+    /// `Poisonned(PoisonError)` will be returned.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let spin = SpinLock::new(42);
+    ///
+    /// match spin.try_wirte() {
+    ///     Ok(data) => {
+    ///         assert_eq!(*data, 42);
+    ///         *data += 1;
+    ///         assert_eq(*data, 43);
+    ///     },
+    ///     Err(TryLockError::WouldBlock) => (), // Sorry luke it's not your turn
+    ///     Err(Poisonned(_)) => panic!("Lock is poisonned"),
+    /// }
+    /// ```
     pub fn try_write(&self) -> TryLockResult<SpinLockWriteGuard<T>> {
         if self.count.compare_and_swap(0, 1, Ordering::Acquire) == 0 {
             Ok(try!(SpinLockWriteGuard::new(self, &self.data)))
@@ -217,12 +353,15 @@ impl<T> SpinLock<T> {
         self.count.fetch_sub(1, Ordering::Release);
     }
 
+    /// Check if the lock is poisonned
     #[inline]
     pub fn is_poisonned(&self) -> bool {
         self.poison.get()
     }
 }
 
+
+/// RAII structure used to release the shared read access of a lock when dropped.
 #[must_use]
 pub struct SpinLockReadGuard<'a, T : 'a> {
     lock : &'a SpinLock<T>,
@@ -255,6 +394,7 @@ impl<'a, T> Drop for SpinLockReadGuard<'a, T> {
     }
 }
 
+/// RAII structure used to release the exclusive write access of a lock when dropped.
 #[must_use]
 pub struct SpinLockWriteGuard<'a, T : 'a> {
     lock : &'a SpinLock<T>,
