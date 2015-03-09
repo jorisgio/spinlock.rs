@@ -40,3 +40,8 @@ fn main() {
 Please note that the spinlock doesn't deal itself with reference counting. You
 might want to use `Arc<SpinLock<T>>` to share the lock between threads.
 
+Credits
+-------
+
+The implementation is derived from the spinlock implementation written by Matt
+Dillon for DragonFlyBSD
