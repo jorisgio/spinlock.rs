@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `SpinLock` struct in crate `spinlock`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, SpinLock">
+
+    <title>spinlock::SpinLock - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <section class="sidebar">
+        
+        <p class='location'><a href='index.html'>spinlock</a></p><div class='block struct'><h2>Structs</h2><a class='struct ' href='struct.PoisonError.html' title='A type of error which can be returned whenever a lock is acquired.'>PoisonError</a><a class='struct current' href='struct.SpinLock.html' title='A Reader/Writer spinlock'>SpinLock</a><a class='struct ' href='struct.SpinLockReadGuard.html' title='RAII structure used to release the shared read access of a lock when dropped.'>SpinLockReadGuard</a><a class='struct ' href='struct.SpinLockWriteGuard.html' title='RAII structure used to release the exclusive write access of a lock when dropped.'>SpinLockWriteGuard</a></div><div class='block enum'><h2>Enums</h2><a class='enum ' href='enum.TryLockError.html' title='An enumeration of possible errors which can occur while calling the `try_lock` method.'>TryLockError</a></div>
+    </section>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press 'S' to search, '?' for more options..."
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='index.html'>spinlock</a>::<wbr><a class='struct' href=''>SpinLock</a><wbr></span><span class='out-of-band'><span id='render-detail'>
+            <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
+        </span><a id='src-171' href='../src/spinlock/lib.rs.html#133-137'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct SpinLock&lt;T&gt; {
+    // some fields omitted
+}</pre><div class='docblock'><p>A Reader/Writer spinlock</p>
+
+<p>A lock protects the underlying data of type <code>T</code> for shared memory concurent access.
+The lock semantic allows any number of concurent readers or alternatively at most one writer.
+A reader is given a reference to the protected data and is able to read it with the guarantee 
+that the data will not change while it holds this reference.
+A writer is given a mutable reference to the protected data and is able to read and write it
+with the guarantee that the data will not change while it holds this reference.</p>
+
+<p>The protected data must implement the markers <code>Send</code> and the marker <code>Sync</code>.</p>
+</div><h2 id='methods'>Methods</h2><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl&lt;T: <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Send.html' title='core::marker::Send'>Send</a> + <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a>&gt; <a class='struct' href='../spinlock/struct.SpinLock.html' title='spinlock::SpinLock'>SpinLock</a>&lt;T&gt;</code></h3><div class='impl-items'><h4 id='method.new' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.new' class='fnname'>new</a>(data: T) -&gt; <a class='struct' href='../spinlock/struct.SpinLock.html' title='spinlock::SpinLock'>SpinLock</a>&lt;T&gt;</code></h4>
+<div class='docblock'><p>Create a new <code>SpinLock</code> wrapping the supplied data</p>
+</div><h4 id='method.write' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.write' class='fnname'>write</a>(&amp;self) -&gt; <a class='type' href='../spinlock/type.LockResult.html' title='spinlock::LockResult'>LockResult</a>&lt;<a class='struct' href='../spinlock/struct.SpinLockWriteGuard.html' title='spinlock::SpinLockWriteGuard'>SpinLockWriteGuard</a>&lt;T&gt;&gt;</code></h4>
+<div class='docblock'><p>Lock the <code>SpinLock</code> for exclusive access and returns a RAII guard which will drop the lock
+when it is dropped.</p>
+
+<p>If another holder as paniced while holding a write lock on the same spinlock, the lock will
+be poisonned. In this case, <code>write</code> will fail with a <code>PoisonError</code>.</p>
+
+<h1 id="panics" class='section-header'><a
+                           href="#panics">Panics</a></h1>
+<p>Panics if the thread is waiting more than <code>MAX_WAIT</code> nanoseconds</p>
+
+<h1 id="examples" class='section-header'><a
+                           href="#examples">Examples</a></h1><pre id='rust-example-rendered' class='rust '>
+<span class='kw'>let</span> <span class='ident'>spin</span> <span class='op'>=</span> <span class='ident'>SpinLock</span>::<span class='ident'>new</span>(<span class='number'>42</span>);
+{
+    <span class='kw'>let</span> <span class='ident'>data</span> <span class='op'>=</span> <span class='ident'>spin</span>.<span class='ident'>write</span>().<span class='ident'>unwrap</span>();
+    <span class='op'>*</span><span class='ident'>data</span> <span class='op'>+=</span> <span class='number'>1</span>;
+}
+<span class='kw'>let</span> <span class='ident'>data</span> <span class='op'>=</span> <span class='ident'>spin</span>.<span class='ident'>read</span>().<span class='ident'>unwrap</span>();
+<span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='op'>*</span><span class='ident'>data</span>, <span class='number'>43</span>);
+</pre>
+</div><h4 id='method.read' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.read' class='fnname'>read</a>(&amp;self) -&gt; <a class='type' href='../spinlock/type.LockResult.html' title='spinlock::LockResult'>LockResult</a>&lt;<a class='struct' href='../spinlock/struct.SpinLockReadGuard.html' title='spinlock::SpinLockReadGuard'>SpinLockReadGuard</a>&lt;T&gt;&gt;</code></h4>
+<div class='docblock'><p>Lock the <code>SpinLock</code> for shared access and returns a RAII guard which will drop the lock
+when it is dropped.</p>
+
+<p>If another holder as paniced while holding a write lock on the same spinlock, the lock will
+be poisonned. In this case, <code>write</code> will fail with a <code>PoisonError</code>.</p>
+
+<h1 id="panics" class='section-header'><a
+                           href="#panics">Panics</a></h1>
+<p>Panics if the thread is waiting more than <code>MAX_WAIT</code> nanoseconds</p>
+
+<h1 id="examples" class='section-header'><a
+                           href="#examples">Examples</a></h1><pre id='rust-example-rendered' class='rust '>
+<span class='kw'>let</span> <span class='ident'>spin</span> <span class='op'>=</span> <span class='ident'>SpinLock</span>::<span class='ident'>new</span>(<span class='number'>42</span>);
+<span class='kw'>let</span> <span class='ident'>data</span> <span class='op'>=</span> <span class='ident'>spin</span>.<span class='ident'>read</span>().<span class='ident'>unwrap</span>();
+<span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='op'>*</span><span class='ident'>data</span>, <span class='number'>42</span>);
+</pre>
+</div><h4 id='method.try_read' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.try_read' class='fnname'>try_read</a>(&amp;self) -&gt; <a class='type' href='../spinlock/type.TryLockResult.html' title='spinlock::TryLockResult'>TryLockResult</a>&lt;<a class='struct' href='../spinlock/struct.SpinLockReadGuard.html' title='spinlock::SpinLockReadGuard'>SpinLockReadGuard</a>&lt;T&gt;&gt;</code></h4>
+<div class='docblock'><p>Attempt to acquire the lock with shared access.</p>
+
+<p>This function will never spin, and will return immediatly if the access is contested. 
+Returns a RAII guard if the access is successful, or <code>TryLockError::WouldBlock</code> if the
+access could not be granted.</p>
+
+<p>If an exclusive holder has panic while holding the lock, the lock will be poisonned and
+<code>Poisonned(PoisonError)</code> will be returned.</p>
+
+<h1 id="example" class='section-header'><a
+                           href="#example">Example</a></h1><pre id='rust-example-rendered' class='rust '>
+<span class='kw'>let</span> <span class='ident'>spin</span> <span class='op'>=</span> <span class='ident'>SpinLock</span>::<span class='ident'>new</span>(<span class='number'>42</span>);
+
+<span class='kw'>match</span> <span class='ident'>spin</span>.<span class='ident'>try_read</span>() {
+    <span class='prelude-val'>Ok</span>(<span class='ident'>data</span>) <span class='op'>=&gt;</span> <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='op'>*</span><span class='ident'>data</span>, <span class='number'>42</span>),
+    <span class='prelude-val'>Err</span>(<span class='ident'>TryLockError</span>::<span class='ident'>WouldBlock</span>) <span class='op'>=&gt;</span> (), <span class='comment'>// Sorry luke it&#39;s not your turn</span>
+    <span class='prelude-val'>Err</span>(<span class='ident'>Poisonned</span>(_)) <span class='op'>=&gt;</span> <span class='macro'>panic</span><span class='macro'>!</span>(<span class='string'>&quot;Lock is poisonned&quot;</span>),
+}
+</pre>
+</div><h4 id='method.try_write' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.try_write' class='fnname'>try_write</a>(&amp;self) -&gt; <a class='type' href='../spinlock/type.TryLockResult.html' title='spinlock::TryLockResult'>TryLockResult</a>&lt;<a class='struct' href='../spinlock/struct.SpinLockWriteGuard.html' title='spinlock::SpinLockWriteGuard'>SpinLockWriteGuard</a>&lt;T&gt;&gt;</code></h4>
+<div class='docblock'><p>Attempt to acquire the lock with exclusive access.</p>
+
+<p>This function will never spin, and will return immediatly if the access is contested. 
+Returns a RAII guard if the access is successful, or <code>TryLockError::WouldBlock</code> if the
+access could not be granted.</p>
+
+<p>If an exclusive holder has panic while holding the lock, the lock will be poisonned and
+<code>Poisonned(PoisonError)</code> will be returned.</p>
+
+<h1 id="example" class='section-header'><a
+                           href="#example">Example</a></h1><pre id='rust-example-rendered' class='rust '>
+<span class='kw'>let</span> <span class='ident'>spin</span> <span class='op'>=</span> <span class='ident'>SpinLock</span>::<span class='ident'>new</span>(<span class='number'>42</span>);
+
+<span class='kw'>match</span> <span class='ident'>spin</span>.<span class='ident'>try_wirte</span>() {
+    <span class='prelude-val'>Ok</span>(<span class='ident'>data</span>) <span class='op'>=&gt;</span> {
+        <span class='macro'>assert_eq</span><span class='macro'>!</span>(<span class='op'>*</span><span class='ident'>data</span>, <span class='number'>42</span>);
+        <span class='op'>*</span><span class='ident'>data</span> <span class='op'>+=</span> <span class='number'>1</span>;
+        <span class='ident'>assert_eq</span>(<span class='op'>*</span><span class='ident'>data</span>, <span class='number'>43</span>);
+    },
+    <span class='prelude-val'>Err</span>(<span class='ident'>TryLockError</span>::<span class='ident'>WouldBlock</span>) <span class='op'>=&gt;</span> (), <span class='comment'>// Sorry luke it&#39;s not your turn</span>
+    <span class='prelude-val'>Err</span>(<span class='ident'>Poisonned</span>(_)) <span class='op'>=&gt;</span> <span class='macro'>panic</span><span class='macro'>!</span>(<span class='string'>&quot;Lock is poisonned&quot;</span>),
+}
+</pre>
+</div></div><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl&lt;T&gt; <a class='struct' href='../spinlock/struct.SpinLock.html' title='spinlock::SpinLock'>SpinLock</a>&lt;T&gt;</code></h3><div class='impl-items'><h4 id='method.is_poisonned' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.is_poisonned' class='fnname'>is_poisonned</a>(&amp;self) -&gt; <a href='http://doc.rust-lang.org/nightly/std/primitive.bool.html'>bool</a></code></h4>
+<div class='docblock'><p>Check if the lock is poisonned</p>
+</div></div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><a class='stability Stable' title='Stable'></a><code>impl&lt;T: <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Send.html' title='core::marker::Send'>Send</a> + <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a>&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Send.html' title='core::marker::Send'>Send</a> for <a class='struct' href='../spinlock/struct.SpinLock.html' title='spinlock::SpinLock'>SpinLock</a>&lt;T&gt;</code></h3><div class='impl-items'></div><h3 class='impl'><a class='stability Stable' title='Stable'></a><code>impl&lt;T: <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Send.html' title='core::marker::Send'>Send</a> + <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a>&gt; <a class='trait' href='http://doc.rust-lang.org/nightly/core/marker/trait.Sync.html' title='core::marker::Sync'>Sync</a> for <a class='struct' href='../spinlock/struct.SpinLock.html' title='spinlock::SpinLock'>SpinLock</a>&lt;T&gt;</code></h3><div class='impl-items'></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <div id="help" class="hidden">
+        <div class="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <dl>
+                <dt>?</dt>
+                <dd>Show this help dialog</dd>
+                <dt>S</dt>
+                <dd>Focus the search field</dd>
+                <dt>&larrb;</dt>
+                <dd>Move up in search results</dd>
+                <dt>&rarrb;</dt>
+                <dd>Move down in search results</dd>
+                <dt>&#9166;</dt>
+                <dd>Go to active search result</dd>
+            </dl>
+        </div>
+        <div class="infos">
+            <h1>Search tricks</h1>
+            <p>
+                Prefix searches with a type followed by a colon (e.g.
+                <code>fn:</code>) to restrict the search to a given type.
+            </p>
+            <p>
+                Accepted types are: <code>fn</code>, <code>mod</code>,
+                <code>struct</code>, <code>enum</code>,
+                <code>trait</code>, <code>typedef</code> (or
+                <code>tdef</code>).
+            </p>
+        </div>
+    </div>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "spinlock";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../jquery.js"></script>
+    <script src="../main.js"></script>
+    
+    <script async src="../search-index.js"></script>
+</body>
+</html>

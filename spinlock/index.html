@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `spinlock` crate.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, spinlock">
+
+    <title>spinlock - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <section class="sidebar">
+        
+        <p class='location'></p>
+    </section>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press 'S' to search, '?' for more options..."
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content mod">
+<h1 class='fqn'><span class='in-band'>Crate <a class='mod' href=''>spinlock</a><wbr></span><span class='out-of-band'><a href='stability.html'>[stability]</a> <span id='render-detail'>
+            <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
+        </span><a id='src-0' href='../src/spinlock/lib.rs.html#1-438'>[src]</a></span></h1>
+<div class='docblock'><p>A reader/writer spin lock implementation.
+A spin lock is a particular kind of lock which will not put the thread to sleep when it tries
+to acquire a lock already hold by another thread or codepath. Instead, the thread will <em>spin</em>
+on the lock, which means it will loop trying to acquire it again and again.</p>
+
+<h1 id="timeouts" class='section-header'><a
+                           href="#timeouts">Timeouts</a></h1>
+<p>This implementation has a timeout. Spinlock are fast but should only be used to protect short
+critical sections and a lock holder should only hold the lock for a very short period of time
+to avoid wasting CPU cycles. If a thread tries to acquire a lock for more than <code>MAX_WAIT</code>
+nanoseconds, it will panic.</p>
+
+<h1 id="optimistic" class='section-header'><a
+                           href="#optimistic">Optimistic</a></h1>
+<p>The implementation is Optimistic. The acquire codepath assumes that the lock operation will
+succeed and doesn&#39;t try to minimize the cost of the initial acquire operation. If the access
+is contested, the implementation then tries to minimize the pressure on the CPU cache until it
+it can actually acquire the lock.
+After <code>SPIN_COUNT</code> retries, the acquire path will call <code>thread::yield_now()</code> between each retry
+to allow for other threads to run and drop the lock.</p>
+
+<h1 id="favor-exclusive-access" class='section-header'><a
+                           href="#favor-exclusive-access">Favor exclusive access</a></h1>
+<p>If a thread is spinning in an contested exclusive access attempt, no new shared access will be
+granted. This is designed to avoid Reader DOSing the Writers.</p>
+
+<h1 id="poisonning" class='section-header'><a
+                           href="#poisonning">Poisonning</a></h1>
+<p>If an exclusive holder panics while holding the lock, it might void the coherency rules.
+Indeed, the protected data might be in a state in which it is not supposed to be. To prevent
+this, if an exclusive holder panics, the lock is poisonned and no other access to the lock will
+be granted.</p>
+</div><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table>
+                    <tr>
+                        <td><a class='stability Stable' title='Stable'></a><a class='struct' href='struct.PoisonError.html'
+                               title='spinlock::PoisonError'>PoisonError</a></td>
+                        <td class='docblock short'><p>A type of error which can be returned whenever a lock is acquired.</p>
+</td>
+                    </tr>
+                
+                    <tr>
+                        <td><a class='stability Unmarked' title='No stability level'></a><a class='struct' href='struct.SpinLock.html'
+                               title='spinlock::SpinLock'>SpinLock</a></td>
+                        <td class='docblock short'><p>A Reader/Writer spinlock</p>
+</td>
+                    </tr>
+                
+                    <tr>
+                        <td><a class='stability Unmarked' title='No stability level'></a><a class='struct' href='struct.SpinLockReadGuard.html'
+                               title='spinlock::SpinLockReadGuard'>SpinLockReadGuard</a></td>
+                        <td class='docblock short'><p>RAII structure used to release the shared read access of a lock when dropped.</p>
+</td>
+                    </tr>
+                
+                    <tr>
+                        <td><a class='stability Unmarked' title='No stability level'></a><a class='struct' href='struct.SpinLockWriteGuard.html'
+                               title='spinlock::SpinLockWriteGuard'>SpinLockWriteGuard</a></td>
+                        <td class='docblock short'><p>RAII structure used to release the exclusive write access of a lock when dropped.</p>
+</td>
+                    </tr>
+                </table><h2 id='enums' class='section-header'><a href="#enums">Enums</a></h2>
+<table>
+                    <tr>
+                        <td><a class='stability Stable' title='Stable'></a><a class='enum' href='enum.TryLockError.html'
+                               title='spinlock::TryLockError'>TryLockError</a></td>
+                        <td class='docblock short'><p>An enumeration of possible errors which can occur while calling the
+<code>try_lock</code> method.</p>
+</td>
+                    </tr>
+                </table><h2 id='constants' class='section-header'><a href="#constants">Constants</a></h2>
+<table>
+                    <tr>
+                        <td><a class='stability Unmarked' title='No stability level'></a><a class='constant' href='constant.MAX_WAIT.html'
+                               title='spinlock::MAX_WAIT'>MAX_WAIT</a></td>
+                        <td class='docblock short'><p>Maximum time spent in spinning in constested path in nanoseconds</p>
+</td>
+                    </tr>
+                
+                    <tr>
+                        <td><a class='stability Unmarked' title='No stability level'></a><a class='constant' href='constant.SPIN_COUNT.html'
+                               title='spinlock::SPIN_COUNT'>SPIN_COUNT</a></td>
+                        <td class='docblock short'><p>Number of spin retry in contested path</p>
+</td>
+                    </tr>
+                </table><h2 id='types' class='section-header'><a href="#types">Type Definitions</a></h2>
+<table>
+                    <tr>
+                        <td><a class='stability Stable' title='Stable'></a><a class='type' href='type.LockResult.html'
+                               title='spinlock::LockResult'>LockResult</a></td>
+                        <td class='docblock short'></td>
+                    </tr>
+                
+                    <tr>
+                        <td><a class='stability Stable' title='Stable'></a><a class='type' href='type.TryLockResult.html'
+                               title='spinlock::TryLockResult'>TryLockResult</a></td>
+                        <td class='docblock short'></td>
+                    </tr>
+                </table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <div id="help" class="hidden">
+        <div class="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <dl>
+                <dt>?</dt>
+                <dd>Show this help dialog</dd>
+                <dt>S</dt>
+                <dd>Focus the search field</dd>
+                <dt>&larrb;</dt>
+                <dd>Move up in search results</dd>
+                <dt>&rarrb;</dt>
+                <dd>Move down in search results</dd>
+                <dt>&#9166;</dt>
+                <dd>Go to active search result</dd>
+            </dl>
+        </div>
+        <div class="infos">
+            <h1>Search tricks</h1>
+            <p>
+                Prefix searches with a type followed by a colon (e.g.
+                <code>fn:</code>) to restrict the search to a given type.
+            </p>
+            <p>
+                Accepted types are: <code>fn</code>, <code>mod</code>,
+                <code>struct</code>, <code>enum</code>,
+                <code>trait</code>, <code>typedef</code> (or
+                <code>tdef</code>).
+            </p>
+        </div>
+    </div>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "spinlock";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../jquery.js"></script>
+    <script src="../main.js"></script>
+    
+    <script async src="../search-index.js"></script>
+</body>
+</html>
